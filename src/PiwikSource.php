@@ -92,7 +92,7 @@ class PiwikSource implements SourceInterface
      */
     private function loadFromPath(OutputInterface $output = null)
     {
-        $path = 'vendor/browscap/browscap/tests/fixtures/issues';
+        $path = 'vendor/piwik/device-detector/Tests/fixtures';
 
         if (!file_exists($path)) {
             return;
