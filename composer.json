@@ -1,0 +1,33 @@
+{
+  "name": "mimmi20/browscap-helper-source-piwik",
+  "description": "the piwik source for the browscap helper to load useragents and tests",
+  "require": {
+    "php": "^5.6 || ^7.0 || ^7.1",
+    "mimmi20/browscap-helper-source": "^1.0",
+    "monolog/monolog": "^1.20",
+    "symfony/console": "^3.0",
+    "piwik/device-detector": "dev-master"
+  },
+  "require-dev": {
+    "squizlabs/php_codesniffer": "^2.5",
+    "friendsofphp/php-cs-fixer": "^1.11"
+  },
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Thomas Müller",
+      "homepage": "https://github.com/mimmi20",
+      "role": "Developer"
+    },
+    {
+      "name": "Contributors",
+      "homepage": "https://github.com/mimmi20/browscap-helper-source-piwik/graphs/contributors"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "BrowscapHelper\\Source\\": "src/"
+    }
+  }
+}
+
