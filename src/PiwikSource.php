@@ -74,7 +74,33 @@ class PiwikSource implements SourceInterface
                     continue;
                 }
 
-                $allTests[$row['user_agent']] = [];
+                $allTests[$row['user_agent']] = [
+                    'ua'         => $row['user_agent'],
+                    'properties' => [
+                        'Browser_Name'            => null,
+                        'Browser_Type'            => null,
+                        'Browser_Bits'            => null,
+                        'Browser_Maker'           => null,
+                        'Browser_Modus'           => null,
+                        'Browser_Version'         => null,
+                        'Platform_Codename'       => null,
+                        'Platform_Marketingname'  => null,
+                        'Platform_Version'        => null,
+                        'Platform_Bits'           => null,
+                        'Platform_Maker'          => null,
+                        'Platform_Brand_Name'     => null,
+                        'Device_Name'             => null,
+                        'Device_Maker'            => null,
+                        'Device_Type'             => null,
+                        'Device_Pointing_Method'  => null,
+                        'Device_Dual_Orientation' => null,
+                        'Device_Code_Name'        => null,
+                        'Device_Brand_Name'       => null,
+                        'RenderingEngine_Name'    => null,
+                        'RenderingEngine_Version' => null,
+                        'RenderingEngine_Maker'   => null,
+                    ],
+                ];
             }
         }
 
@@ -92,7 +118,7 @@ class PiwikSource implements SourceInterface
      */
     private function loadFromPath(OutputInterface $output = null)
     {
-        $path = 'vendor/piwik/device-detector/Tests/fixtures';
+        $path = 'vendor/browscap/browscap/tests/fixtures/issues';
 
         if (!file_exists($path)) {
             return;
