@@ -21,37 +21,33 @@ class PiwikSource implements SourceInterface
      */
     public function getUserAgents(Logger $logger, OutputInterface $output, $limit = 0)
     {
+        $counter   = 0;
         $allAgents = [];
 
         foreach ($this->loadFromPath($output) as $dataFile) {
-            if ($limit && count($allAgents) >= $limit) {
-                break;
+            if ($limit && $counter >= $limit) {
+                return;
             }
 
             $agentsFromFile = [];
 
             foreach ($dataFile as $row) {
+                if ($limit && $counter >= $limit) {
+                    return;
+                }
+
                 if (empty($row['user_agent'])) {
                     continue;
                 }
 
-                $agentsFromFile[] = $row['user_agent'];
+                if (array_key_exists($row['user_agent'], $allAgents)) {
+                    continue;
+                }
+
+                yield $row['user_agent'];
+                $agentsFromFile[$row['user_agent']] = 1;
+                ++$counter;
             }
-
-            $output->writeln(' [added ' . str_pad(number_format(count($allAgents)), 12, ' ', STR_PAD_LEFT) . ' agent' . (count($allAgents) !== 1 ? 's' : '') . ' so far]');
-
-            $newAgents = array_diff($agentsFromFile, $allAgents);
-            $allAgents = array_merge($allAgents, $newAgents);
-        }
-
-        $i = 0;
-        foreach ($allAgents as $agent) {
-            if ($limit && $i >= $limit) {
-                return null;
-            }
-
-            ++$i;
-            yield $agent;
         }
     }
 
@@ -70,11 +66,12 @@ class PiwikSource implements SourceInterface
                 if (empty($row['user_agent'])) {
                     continue;
                 }
+
                 if (array_key_exists($row['user_agent'], $allTests)) {
                     continue;
                 }
 
-                $allTests[$row['user_agent']] = [
+                $test = [
                     'ua'         => $row['user_agent'],
                     'properties' => [
                         'Browser_Name'            => null,
@@ -101,13 +98,10 @@ class PiwikSource implements SourceInterface
                         'RenderingEngine_Maker'   => null,
                     ],
                 ];
-            }
-        }
 
-        $i = 0;
-        foreach ($allTests as $ua => $test) {
-            ++$i;
-            yield [$ua => $test];
+                yield [$row['user_agent'] => $test];
+                $allTests[$row['user_agent']] = 1;
+            }
         }
     }
 
