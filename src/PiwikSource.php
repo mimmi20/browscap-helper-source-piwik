@@ -8,6 +8,7 @@ use UaResult\Browser\Browser;
 use UaResult\Device\Device;
 use UaResult\Engine\Engine;
 use UaResult\Os\Os;
+use UaResult\Result\Result;
 use Wurfl\Request\GenericRequestFactory;
 
 /**
