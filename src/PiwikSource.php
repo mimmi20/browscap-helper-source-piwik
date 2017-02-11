@@ -2,8 +2,13 @@
 
 namespace BrowscapHelper\Source;
 
-use Monolog\Logger;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use UaResult\Browser\Browser;
+use UaResult\Device\Device;
+use UaResult\Engine\Engine;
+use UaResult\Os\Os;
+use Wurfl\Request\GenericRequestFactory;
 
 /**
  * Class DirectorySource
@@ -13,18 +18,36 @@ use Symfony\Component\Console\Output\OutputInterface;
 class PiwikSource implements SourceInterface
 {
     /**
-     * @param \Monolog\Logger                                   $logger
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     * @param int                                               $limit
-     *
-     * @return \Generator
+     * @var \Symfony\Component\Console\Output\OutputInterface
      */
-    public function getUserAgents(Logger $logger, OutputInterface $output, $limit = 0)
+    private $output = null;
+
+    /**
+     * @var \Psr\Log\LoggerInterface
+     */
+    private $logger = null;
+
+    /**
+     * @param \Psr\Log\LoggerInterface                          $logger
+     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     */
+    public function __construct(LoggerInterface $logger, OutputInterface $output)
+    {
+        $this->logger = $logger;
+        $this->output = $output;
+    }
+
+    /**
+     * @param int $limit
+     *
+     * @return string[]
+     */
+    public function getUserAgents($limit = 0)
     {
         $counter   = 0;
         $allAgents = [];
 
-        foreach ($this->loadFromPath($output) as $dataFile) {
+        foreach ($this->loadFromPath() as $dataFile) {
             if ($limit && $counter >= $limit) {
                 return;
             }
@@ -52,16 +75,13 @@ class PiwikSource implements SourceInterface
     }
 
     /**
-     * @param \Monolog\Logger                                   $logger
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     *
-     * @return \Generator
+     * @return \UaResult\Result\Result[]
      */
-    public function getTests(Logger $logger, OutputInterface $output)
+    public function getTests()
     {
         $allTests = [];
 
-        foreach ($this->loadFromPath($output) as $dataFile) {
+        foreach ($this->loadFromPath() as $dataFile) {
             foreach ($dataFile as $row) {
                 if (empty($row['user_agent'])) {
                     continue;
@@ -71,54 +91,30 @@ class PiwikSource implements SourceInterface
                     continue;
                 }
 
-                $test = [
-                    'ua'         => $row['user_agent'],
-                    'properties' => [
-                        'Browser_Name'            => null,
-                        'Browser_Type'            => null,
-                        'Browser_Bits'            => null,
-                        'Browser_Maker'           => null,
-                        'Browser_Modus'           => null,
-                        'Browser_Version'         => null,
-                        'Platform_Codename'       => null,
-                        'Platform_Marketingname'  => null,
-                        'Platform_Version'        => null,
-                        'Platform_Bits'           => null,
-                        'Platform_Maker'          => null,
-                        'Platform_Brand_Name'     => null,
-                        'Device_Name'             => null,
-                        'Device_Maker'            => null,
-                        'Device_Type'             => null,
-                        'Device_Pointing_Method'  => null,
-                        'Device_Dual_Orientation' => null,
-                        'Device_Code_Name'        => null,
-                        'Device_Brand_Name'       => null,
-                        'RenderingEngine_Name'    => null,
-                        'RenderingEngine_Version' => null,
-                        'RenderingEngine_Maker'   => null,
-                    ],
-                ];
+                $request  = (new GenericRequestFactory())->createRequestForUserAgent($row['user_agent']);
+                $browser  = new Browser(null);
+                $device   = new Device(null, null);
+                $platform = new Os(null, null);
+                $engine   = new Engine(null);
 
-                yield [$row['user_agent'] => $test];
+                yield $row['user_agent'] => new Result($request, $device, $platform, $browser, $engine);
                 $allTests[$row['user_agent']] = 1;
             }
         }
     }
 
     /**
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
-     *
-     * @return \Generator
+     * @return array[]
      */
-    private function loadFromPath(OutputInterface $output = null)
+    private function loadFromPath()
     {
-        $path = 'vendor/browscap/browscap/tests/fixtures/issues';
+        $path = 'vendor/piwik/device-detector/Tests/fixtures';
 
         if (!file_exists($path)) {
             return;
         }
 
-        $output->writeln('    reading path ' . $path);
+        $this->output->writeln('    reading path ' . $path);
 
         $iterator = new \RecursiveDirectoryIterator($path);
 
@@ -130,7 +126,7 @@ class PiwikSource implements SourceInterface
 
             $filepath = $file->getPathname();
 
-            $output->write('    reading file ' . str_pad($filepath, 100, ' ', STR_PAD_RIGHT), false);
+            $this->output->writeln('    reading file ' . str_pad($filepath, 100, ' ', STR_PAD_RIGHT));
             switch ($file->getExtension()) {
                 case 'yml':
                     $data = \Spyc::YAMLLoad($filepath);
