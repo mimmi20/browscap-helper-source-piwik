@@ -11,9 +11,21 @@
 declare(strict_types = 1);
 namespace BrowscapHelper\Source;
 
+use BrowserDetector\Loader\NotFoundException;
+use Psr\Cache\CacheItemPoolInterface;
 use Psr\Log\LoggerInterface;
-use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Finder\Finder;
+use UaDataMapper\BrowserNameMapper;
+use UaDataMapper\BrowserTypeMapper;
+use UaDataMapper\BrowserVersionMapper;
+use UaDataMapper\DeviceMarketingnameMapper;
+use UaDataMapper\DeviceNameMapper;
+use UaDataMapper\DeviceTypeMapper;
+use UaDataMapper\EngineNameMapper;
+use UaDataMapper\PlatformNameMapper;
+use UaDataMapper\PlatformVersionMapper;
 use UaResult\Browser\Browser;
+use UaResult\Company\CompanyLoader;
 use UaResult\Device\Device;
 use UaResult\Engine\Engine;
 use UaResult\Os\Os;
@@ -28,23 +40,23 @@ use Wurfl\Request\GenericRequestFactory;
 class PiwikSource implements SourceInterface
 {
     /**
-     * @var \Symfony\Component\Console\Output\OutputInterface
-     */
-    private $output = null;
-
-    /**
      * @var \Psr\Log\LoggerInterface
      */
     private $logger = null;
 
     /**
-     * @param \Psr\Log\LoggerInterface                          $logger
-     * @param \Symfony\Component\Console\Output\OutputInterface $output
+     * @var \Psr\Cache\CacheItemPoolInterface|null
      */
-    public function __construct(LoggerInterface $logger, OutputInterface $output)
+    private $cache = null;
+
+    /**
+     * @param \Psr\Log\LoggerInterface          $logger
+     * @param \Psr\Cache\CacheItemPoolInterface $cache
+     */
+    public function __construct(LoggerInterface $logger, CacheItemPoolInterface $cache)
     {
         $this->logger = $logger;
-        $this->output = $output;
+        $this->cache  = $cache;
     }
 
     /**
@@ -54,33 +66,16 @@ class PiwikSource implements SourceInterface
      */
     public function getUserAgents($limit = 0)
     {
-        $counter   = 0;
-        $allAgents = [];
+        $counter = 0;
 
-        foreach ($this->loadFromPath() as $dataFile) {
+        foreach ($this->loadFromPath() as $row) {
             if ($limit && $counter >= $limit) {
                 return;
             }
 
-            $agentsFromFile = [];
-
-            foreach ($dataFile as $row) {
-                if ($limit && $counter >= $limit) {
-                    return;
-                }
-
-                if (empty($row['user_agent'])) {
-                    continue;
-                }
-
-                if (array_key_exists($row['user_agent'], $allAgents)) {
-                    continue;
-                }
-
-                yield $row['user_agent'];
-                $agentsFromFile[$row['user_agent']] = 1;
-                ++$counter;
-            }
+            $row = json_decode($row, false);
+            yield trim($row->user_agent);
+            ++$counter;
         }
     }
 
@@ -89,32 +84,107 @@ class PiwikSource implements SourceInterface
      */
     public function getTests()
     {
-        $allTests = [];
+        foreach ($this->loadFromPath() as $row) {
+            $row     = json_decode($row, false);
+            $request = (new GenericRequestFactory())->createRequestForUserAgent($row->user_agent);
 
-        foreach ($this->loadFromPath() as $dataFile) {
-            foreach ($dataFile as $row) {
-                if (empty($row['user_agent'])) {
-                    continue;
+            $browserManufacturer = null;
+            $browserVersion      = null;
+
+            if (!empty($row->bot)) {
+                $browserName = (new BrowserNameMapper())->mapBrowserName($row->bot->name);
+
+                if (!empty($row->bot->producer->name)) {
+                    try {
+                        $browserManufacturer = (new CompanyLoader($this->cache))->loadByName($row->bot->producer->name);
+                    } catch (NotFoundException $e) {
+                        $this->logger->critical($e);
+                        $browserManufacturer = null;
+                    }
                 }
 
-                if (array_key_exists($row['user_agent'], $allTests)) {
-                    continue;
+                try {
+                    $browserType = (new BrowserTypeMapper())->mapBrowserType($this->cache, 'robot');
+                } catch (NotFoundException $e) {
+                    $this->logger->critical($e);
+                    $browserType = null;
                 }
+            } else {
+                $browserName    = (new BrowserNameMapper())->mapBrowserName($row->client->name);
+                $browserVersion = (new BrowserVersionMapper())->mapBrowserVersion(
+                    $row->client->version,
+                    $browserName
+                );
 
-                $request  = (new GenericRequestFactory())->createRequestForUserAgent($row['user_agent']);
-                $browser  = new Browser(null);
-                $device   = new Device(null, null);
-                $platform = new Os(null, null);
-                $engine   = new Engine(null);
-
-                yield $row['user_agent'] => new Result($request, $device, $platform, $browser, $engine);
-                $allTests[$row['user_agent']] = 1;
+                if (!empty($row['client']['type'])) {
+                    try {
+                        $browserType = (new BrowserTypeMapper())->mapBrowserType($this->cache, $row['client']['type']);
+                    } catch (NotFoundException $e) {
+                        $this->logger->critical($e);
+                        $browserType = null;
+                    }
+                } else {
+                    $browserType = null;
+                }
             }
+
+            $browser = new Browser(
+                $browserName,
+                $browserManufacturer,
+                $browserVersion,
+                $browserType
+            );
+
+            $deviceName  = (new DeviceNameMapper())->mapDeviceName($row->device->model);
+            $deviceBrand = null;
+
+            try {
+                $deviceBrand = (new CompanyLoader($this->cache))->loadByBrandName($row->device->brand);
+            } catch (NotFoundException $e) {
+                $this->logger->critical($e);
+                $deviceBrand = null;
+            }
+
+            try {
+                $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, $row->device->type);
+            } catch (NotFoundException $e) {
+                $this->logger->critical($e);
+                $deviceType = null;
+            }
+
+            $device = new Device(
+                $deviceName,
+                (new DeviceMarketingnameMapper())->mapDeviceMarketingName($deviceName),
+                null,
+                $deviceBrand,
+                $deviceType
+            );
+
+            $os = new Os(null, null);
+
+            if (!empty($row->os->name)) {
+                $osName = (new PlatformNameMapper())->mapOsName($row->os->name);
+
+                if (!in_array($osName, ['PlayStation'])) {
+                    $osVersion = (new PlatformVersionMapper())->mapOsVersion($row->os->version, $row->os->name);
+                    $os        = new Os($osName, null, null, $osVersion);
+                }
+            }
+
+            if (!empty($row->client->engine)) {
+                $engineName = (new EngineNameMapper())->mapEngineName($row->client->engine);
+
+                $engine = new Engine($engineName);
+            } else {
+                $engine = new Engine(null);
+            }
+
+            yield trim($row->user_agent) => new Result($request, $device, $os, $browser, $engine);
         }
     }
 
     /**
-     * @return array[]
+     * @return string[]
      */
     private function loadFromPath()
     {
@@ -124,32 +194,50 @@ class PiwikSource implements SourceInterface
             return;
         }
 
-        $this->output->writeln('    reading path ' . $path);
+        $this->logger->info('    reading path ' . $path);
 
-        $iterator = new \RecursiveDirectoryIterator($path);
+        $allTests = [];
+        $finder   = new Finder();
+        $finder->files();
+        $finder->name('*.yml');
+        $finder->ignoreDotFiles(true);
+        $finder->ignoreVCS(true);
+        $finder->sortByName();
+        $finder->ignoreUnreadableDirs();
+        $finder->in($path);
 
-        foreach (new \RecursiveIteratorIterator($iterator) as $file) {
-            /** @var $file \SplFileInfo */
+        foreach ($finder as $file) {
+            /** @var \Symfony\Component\Finder\SplFileInfo $file */
             if (!$file->isFile()) {
+                continue;
+            }
+
+            if ('yml' !== $file->getExtension()) {
                 continue;
             }
 
             $filepath = $file->getPathname();
 
-            $this->output->writeln('    reading file ' . str_pad($filepath, 100, ' ', STR_PAD_RIGHT));
-            switch ($file->getExtension()) {
-                case 'yml':
-                    $data = \Spyc::YAMLLoad($filepath);
+            $this->logger->info('    reading file ' . str_pad($filepath, 100, ' ', STR_PAD_RIGHT));
+            $dataFile = \Spyc::YAMLLoad($filepath);
 
-                    if (!is_array($data)) {
-                        continue;
-                    }
+            if (!is_array($dataFile)) {
+                continue;
+            }
 
-                    yield $data;
-                    break;
-                default:
-                    // do nothing here
-                    break;
+            foreach ($dataFile as $row) {
+                if (empty($row['user_agent'])) {
+                    continue;
+                }
+
+                $agent = trim($row['user_agent']);
+
+                if (array_key_exists($agent, $allTests)) {
+                    continue;
+                }
+
+                yield json_encode($row, JSON_FORCE_OBJECT);
+                $allTests[$agent] = 1;
             }
         }
     }
