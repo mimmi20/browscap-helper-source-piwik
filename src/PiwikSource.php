@@ -109,16 +109,16 @@ class PiwikSource implements SourceInterface
                     $this->logger->critical($e);
                     $browserType = null;
                 }
-            } else {
+            } elseif (isset($row->client->name)) {
                 $browserName    = (new BrowserNameMapper())->mapBrowserName($row->client->name);
                 $browserVersion = (new BrowserVersionMapper())->mapBrowserVersion(
                     $row->client->version,
                     $browserName
                 );
 
-                if (!empty($row['client']['type'])) {
+                if (!empty($row->client->type)) {
                     try {
-                        $browserType = (new BrowserTypeMapper())->mapBrowserType($this->cache, $row['client']['type']);
+                        $browserType = (new BrowserTypeMapper())->mapBrowserType($this->cache, $row->client->type);
                     } catch (NotFoundException $e) {
                         $this->logger->critical($e);
                         $browserType = null;
@@ -135,21 +135,27 @@ class PiwikSource implements SourceInterface
                 $browserType
             );
 
-            $deviceName  = (new DeviceNameMapper())->mapDeviceName($row->device->model);
-            $deviceBrand = null;
-
-            try {
-                $deviceBrand = (new CompanyLoader($this->cache))->loadByBrandName($row->device->brand);
-            } catch (NotFoundException $e) {
-                $this->logger->critical($e);
+            if (isset($row->device->model)) {
+                $deviceName  = (new DeviceNameMapper())->mapDeviceName($row->device->model);
                 $deviceBrand = null;
-            }
 
-            try {
-                $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, $row->device->type);
-            } catch (NotFoundException $e) {
-                $this->logger->critical($e);
-                $deviceType = null;
+                try {
+                    $deviceBrand = (new CompanyLoader($this->cache))->loadByBrandName($row->device->brand);
+                } catch (NotFoundException $e) {
+                    $this->logger->critical($e);
+                    $deviceBrand = null;
+                }
+
+                try {
+                    $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, $row->device->type);
+                } catch (NotFoundException $e) {
+                    $this->logger->critical($e);
+                    $deviceType = null;
+                }
+            } else {
+                $deviceName  = 'unknown';
+                $deviceBrand = null;
+                $deviceType  = (new DeviceTypeMapper())->mapDeviceType($this->cache, 'unknown');
             }
 
             $device = new Device(
