@@ -90,13 +90,15 @@ class PiwikSource implements SourceInterface
 
             $browserManufacturer = null;
             $browserVersion      = null;
+            $browserName         = null;
+            $browserType         = null;
 
             if (!empty($row->bot)) {
-                $browserName = (new BrowserNameMapper())->mapBrowserName($row->bot->name);
+                $browserName = (new BrowserNameMapper())->mapBrowserName((string) $row->bot->name);
 
                 if (!empty($row->bot->producer->name)) {
                     try {
-                        $browserManufacturer = (new CompanyLoader($this->cache))->loadByName($row->bot->producer->name);
+                        $browserManufacturer = (new CompanyLoader($this->cache))->loadByName((string) $row->bot->producer->name);
                     } catch (NotFoundException $e) {
                         $this->logger->critical($e);
                         $browserManufacturer = null;
@@ -110,7 +112,7 @@ class PiwikSource implements SourceInterface
                     $browserType = null;
                 }
             } elseif (isset($row->client->name)) {
-                $browserName    = (new BrowserNameMapper())->mapBrowserName($row->client->name);
+                $browserName    = (new BrowserNameMapper())->mapBrowserName((string) $row->client->name);
                 $browserVersion = (new BrowserVersionMapper())->mapBrowserVersion(
                     $row->client->version,
                     $browserName
@@ -118,7 +120,7 @@ class PiwikSource implements SourceInterface
 
                 if (!empty($row->client->type)) {
                     try {
-                        $browserType = (new BrowserTypeMapper())->mapBrowserType($this->cache, $row->client->type);
+                        $browserType = (new BrowserTypeMapper())->mapBrowserType($this->cache, (string) $row->client->type);
                     } catch (NotFoundException $e) {
                         $this->logger->critical($e);
                         $browserType = null;
@@ -136,18 +138,18 @@ class PiwikSource implements SourceInterface
             );
 
             if (isset($row->device->model)) {
-                $deviceName  = (new DeviceNameMapper())->mapDeviceName($row->device->model);
+                $deviceName  = (new DeviceNameMapper())->mapDeviceName((string) $row->device->model);
                 $deviceBrand = null;
 
                 try {
-                    $deviceBrand = (new CompanyLoader($this->cache))->loadByBrandName($row->device->brand);
+                    $deviceBrand = (new CompanyLoader($this->cache))->loadByBrandName((string) $row->device->brand);
                 } catch (NotFoundException $e) {
                     $this->logger->critical($e);
                     $deviceBrand = null;
                 }
 
                 try {
-                    $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, $row->device->type);
+                    $deviceType = (new DeviceTypeMapper())->mapDeviceType($this->cache, (string) $row->device->type);
                 } catch (NotFoundException $e) {
                     $this->logger->critical($e);
                     $deviceType = null;
@@ -169,16 +171,16 @@ class PiwikSource implements SourceInterface
             $os = new Os(null, null);
 
             if (!empty($row->os->name)) {
-                $osName = (new PlatformNameMapper())->mapOsName($row->os->name);
+                $osName = (new PlatformNameMapper())->mapOsName((string) $row->os->name);
 
                 if (!in_array($osName, ['PlayStation'])) {
-                    $osVersion = (new PlatformVersionMapper())->mapOsVersion($row->os->version, $row->os->name);
+                    $osVersion = (new PlatformVersionMapper())->mapOsVersion((string) $row->os->version, (string) $row->os->name);
                     $os        = new Os($osName, null, null, $osVersion);
                 }
             }
 
             if (!empty($row->client->engine)) {
-                $engineName = (new EngineNameMapper())->mapEngineName($row->client->engine);
+                $engineName = (new EngineNameMapper())->mapEngineName((string) $row->client->engine);
 
                 $engine = new Engine($engineName);
             } else {
